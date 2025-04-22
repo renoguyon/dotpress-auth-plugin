@@ -1,0 +1,10 @@
+src/
+
+.idea/
+.vscode/
+.editorconfig
+.eslintignore
+.prettierrc.json
+eslint.config.mjs
+package-lock.json
+tsconfig.json

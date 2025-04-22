@@ -1,0 +1,72 @@
+{
+  "name": "@dotpress/auth",
+  "version": "1.0.0",
+  "description": "JWT Authentication plugin for Dotpress library",
+  "author": "Renaud Guyon",
+  "license": "MIT",
+  "homepage": "https://dotpress.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/renoguyon/dotpress-auth-plugin"
+  },
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint ./src",
+    "lint:fix": "eslint ./src --fix",
+    "test": "vitest run",
+    "test:ui": "vitest --ui",
+    "test:watch": "vitest watch"
+  },
+  "peerDependencies": {
+    "dotpress": "^1",
+    "zod": "^3"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "jsonwebtoken": "^9.0.2",
+    "request-ip": "^3.3.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.24.0",
+    "@types/bcrypt": "^5.0.2",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/request-ip": "^0.0.41",
+    "@types/supertest": "^6.0.3",
+    "@vitest/ui": "^3.1.1",
+    "dotpress": "^1",
+    "eslint": "^9.24.0",
+    "eslint-config-prettier": "^10.1.1",
+    "eslint-plugin-prettier": "^5.2.6",
+    "prettier": "^3.5.3",
+    "supertest": "^7.1.0",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.29.1",
+    "vitest": "^3.1.2"
+  },
+  "keywords": [
+    "express",
+    "typescript",
+    "auth",
+    "authentication",
+    "node",
+    "backend",
+    "rest",
+    "jwt",
+    "plugin",
+    "dotpress"
+  ]
+}
