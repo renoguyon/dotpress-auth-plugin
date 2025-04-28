@@ -1,9 +1,10 @@
 import type { Plugin } from 'dotpress'
+import bcrypt from 'bcryptjs'
 import { AuthSettings, DataProvider, KeyPairSettings } from './types/types.js'
 import { setSettings } from './lib/settings.js'
 import { registerHandlers } from './lib/handlers.js'
 import { attachAuthenticatedUser } from './lib/middleware.js'
-import bcrypt from 'bcryptjs'
+import { generateAccessToken } from './lib/tokens.js'
 
 type Settings = Partial<AuthSettings> & {
   keys: KeyPairSettings
@@ -28,3 +29,5 @@ export const generatePasswordHash = (
 ): Promise<string> => {
   return bcrypt.hash(password, salt)
 }
+
+export { generateAccessToken }

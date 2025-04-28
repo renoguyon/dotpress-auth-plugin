@@ -63,11 +63,7 @@ export const generateTokensForUser = async ({
 }: UserIdentifiers): Promise<TokenPair> => {
   const settings = getSettings()
 
-  const { jwtId, accessToken } = createAccessTokenFromPayload({
-    sub: userId,
-    username,
-    auth_time: Math.floor(Date.now() / 1000),
-  })
+  const { jwtId, accessToken } = generateAccessToken({ userId, username })
 
   const { token: refreshToken, tokenHash: refreshTokenHash } =
     generateRefreshToken()
@@ -84,6 +80,17 @@ export const generateTokensForUser = async ({
     accessToken,
     refreshToken,
   }
+}
+
+export const generateAccessToken = ({
+  userId,
+  username,
+}: UserIdentifiers): CreatedAccessToken => {
+  return createAccessTokenFromPayload({
+    sub: userId,
+    username,
+    auth_time: Math.floor(Date.now() / 1000),
+  })
 }
 
 const addDaysFromNow = (days: number): Date => {
