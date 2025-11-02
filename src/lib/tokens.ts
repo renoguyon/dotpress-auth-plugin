@@ -8,6 +8,7 @@ type CreateTokenPayload = {
   sub: string
   username: string
   auth_time: number
+  aud?: string
 }
 
 type CreatedAccessToken = {
@@ -23,6 +24,7 @@ type CreatedRefreshToken = {
 type UserIdentifiers = {
   userId: string
   username: string
+  aud?: string
 }
 
 export const createAccessTokenFromPayload = (
@@ -60,10 +62,11 @@ export const generateRefreshToken = (): CreatedRefreshToken => {
 export const generateTokensForUser = async ({
   userId,
   username,
+  aud,
 }: UserIdentifiers): Promise<TokenPair> => {
   const settings = getSettings()
 
-  const { jwtId, accessToken } = generateAccessToken({ userId, username })
+  const { jwtId, accessToken } = generateAccessToken({ userId, username, aud })
 
   const { token: refreshToken, tokenHash: refreshTokenHash } =
     generateRefreshToken()
@@ -85,11 +88,13 @@ export const generateTokensForUser = async ({
 export const generateAccessToken = ({
   userId,
   username,
+  aud,
 }: UserIdentifiers): CreatedAccessToken => {
   return createAccessTokenFromPayload({
     sub: userId,
     username,
     auth_time: Math.floor(Date.now() / 1000),
+    aud,
   })
 }
 
@@ -143,6 +148,7 @@ export const generateTokensFromRefreshToken = async ({
     sub: userId,
     username: decodedToken.username,
     auth_time: decodedToken.auth_time,
+    aud: (decodedToken.aud as string) || undefined,
   })
 
   const newRefreshToken = generateRefreshToken()

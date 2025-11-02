@@ -1,5 +1,6 @@
 import type { Plugin } from 'dotpress'
 import bcrypt from 'bcryptjs'
+import cookieParser from 'cookie-parser'
 import { AuthSettings, DataProvider, KeyPairSettings } from './types/types.js'
 import { setSettings } from './lib/settings.js'
 import { registerHandlers } from './lib/handlers.js'
@@ -16,6 +17,9 @@ export const configurePlugin = (settings: Settings): Plugin => {
 
   return (plugin) => {
     plugin.useBeforeRoutes((app) => {
+      if (settings.cookies?.enabled) {
+        app.use(cookieParser())
+      }
       app.use(attachAuthenticatedUser)
     })
 

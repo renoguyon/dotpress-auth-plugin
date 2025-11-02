@@ -129,6 +129,8 @@ describe('Handlers', () => {
         userId: '101',
         accessToken: 'acc-111222333',
         refreshToken: 'ref-999888777',
+        expiresIn: expect.any(Number),
+        expiresAt: expect.any(String),
       })
     })
   })
@@ -186,6 +188,8 @@ describe('Handlers', () => {
         userId: '102',
         accessToken: '111222333',
         refreshToken: '111111111',
+        expiresIn: expect.any(Number),
+        expiresAt: expect.any(String),
       })
       expect(generateTokenFn).toHaveBeenCalledTimes(1)
       expect(generateTokenFn).toHaveBeenCalledWith({

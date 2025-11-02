@@ -14,12 +14,31 @@ export type KeyPairSettings = {
   publicKey: string
 }
 
+export type CookieSettings = {
+  enabled?: boolean
+  httpOnly?: boolean
+  secure?: boolean
+  sameSite?: 'strict' | 'lax' | 'none'
+  domain?: string
+  path?: string
+  accessTokenName?: string
+  refreshTokenName?: string
+  accessTokenInCookie?: boolean
+}
+
+export type AuthMode = 'body' | 'cookie'
+
 export type AuthSettings = {
   accessTokenTTL: number
   refreshTokenTTLInDays: number
   issuer: string
+  cookies?: CookieSettings
   onLoginFailed?: (e: LoginFailedEvent) => Promise<void>
   onLoginSuccess?: (e: LoginSuccessEvent) => Promise<void>
+  aud?: {
+    required?: boolean
+    isUserRoleAllowed: (role: string, aud: string) => boolean
+  }
 }
 
 type LoginFailedEvent = {
@@ -49,6 +68,14 @@ export interface AppJwtPayload extends JwtPayload {
 export type TokenPair = {
   accessToken: string
   refreshToken: string
+}
+
+export type TokenResponse = {
+  userId: string
+  accessToken: string
+  refreshToken: string
+  expiresIn: number
+  expiresAt: string
 }
 
 export type CreateTokenPayload = {
@@ -83,5 +110,7 @@ export type DataProvider = {
   ) => Promise<TUser | undefined>
   findUserIdentifiers: (
     username: string
-  ) => Promise<{ userId: string; passwordHash: string } | undefined>
+  ) => Promise<
+    { userId: string; passwordHash: string; role?: string } | undefined
+  >
 }

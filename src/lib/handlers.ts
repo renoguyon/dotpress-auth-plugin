@@ -7,6 +7,12 @@ import {
   generateTokensForUser,
   generateTokensFromRefreshToken,
 } from './tokens.js'
+import {
+  setAuthCookies,
+  clearAuthCookies,
+  extractTokensFromRequest,
+  calculateExpiration,
+} from './cookies.js'
 
 export const registerHandlers = (plugin: PluginAPI) => {
   const authGroup = plugin.addGroup('/auth')
@@ -20,15 +26,19 @@ export const registerHandlers = (plugin: PluginAPI) => {
         username: z.string(),
         password: z.string(),
         client: z.string().optional(),
+        aud: settings.aud?.required ? z.string() : z.string().optional(),
+        mode: z.enum(['body', 'cookie']).optional(),
       }),
       response: z.object({
         userId: z.string(),
         accessToken: z.string(),
         refreshToken: z.string(),
+        expiresIn: z.number(),
+        expiresAt: z.string(),
       }),
     }),
-    handler: async ({ req }) => {
-      const { username, password, client } = req.body
+    handler: async ({ req, res }) => {
+      const { username, password, client, aud, mode } = req.body
       const ipAddress = getRequestIp(req)
 
       const user = await settings.dataProvider.findUserIdentifiers(username)
@@ -59,9 +69,26 @@ export const registerHandlers = (plugin: PluginAPI) => {
         return unauthorizedError('INVALID_LOGIN')
       }
 
+      if (aud && typeof settings.aud?.isUserRoleAllowed === 'function') {
+        const isAllowed = settings.aud.isUserRoleAllowed(user.role || '', aud)
+
+        if (!isAllowed) {
+          if (settings.onLoginFailed) {
+            await settings.onLoginFailed({
+              username,
+              errorType: 'invalid_role',
+              client: client || '',
+              ipAddress: ipAddress || '',
+            })
+          }
+          return unauthorizedError('INVALID_LOGIN')
+        }
+      }
+
       const { accessToken, refreshToken } = await generateTokensForUser({
         username,
         userId: user.userId,
+        aud,
       })
 
       if (settings.onLoginSuccess) {
@@ -73,10 +100,21 @@ export const registerHandlers = (plugin: PluginAPI) => {
         })
       }
 
+      if (mode === 'cookie') {
+        setAuthCookies(
+          res,
+          { accessToken, refreshToken },
+          settings.accessTokenTTL
+        )
+      }
+
+      const expiration = calculateExpiration(settings.accessTokenTTL)
+
       return {
         userId: user.userId,
         accessToken,
         refreshToken,
+        ...expiration,
       }
     },
   })
@@ -85,18 +123,29 @@ export const registerHandlers = (plugin: PluginAPI) => {
     method: 'post',
     path: '/refresh',
     schema: (z) => ({
-      body: z.object({
-        accessToken: z.string(),
-        refreshToken: z.string(),
-      }),
+      body: z
+        .object({
+          accessToken: z.string().optional(),
+          refreshToken: z.string().optional(),
+        })
+        .optional(),
       response: z.object({
         userId: z.string(),
         accessToken: z.string(),
         refreshToken: z.string(),
+        expiresIn: z.number(),
+        expiresAt: z.string(),
       }),
     }),
-    handler: async ({ req }) => {
-      const { accessToken, refreshToken } = req.body
+    handler: async ({ req, res }) => {
+      // Extract tokens from cookies or body (auto-detect)
+      const extractedTokens = extractTokensFromRequest(req)
+
+      if (!extractedTokens) {
+        return unauthorizedError('NO_TOKENS_PROVIDED')
+      }
+
+      const { accessToken, refreshToken } = extractedTokens
 
       try {
         const tokens = await generateTokensFromRefreshToken({
@@ -104,10 +153,31 @@ export const registerHandlers = (plugin: PluginAPI) => {
           refreshToken,
         })
 
+        // Set cookies if the request came with cookies (auto-detect mode)
+        const mode = req.cookies?.[
+          settings.cookies?.refreshTokenName || 'dotpress_refresh_token'
+        ]
+          ? 'cookie'
+          : 'body'
+
+        if (mode === 'cookie') {
+          setAuthCookies(
+            res,
+            {
+              accessToken: tokens.accessToken,
+              refreshToken: tokens.refreshToken,
+            },
+            settings.accessTokenTTL
+          )
+        }
+
+        const expiration = calculateExpiration(settings.accessTokenTTL)
+
         return {
           userId: tokens.userId,
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken,
+          ...expiration,
         }
       } catch (e) {
         const errorMessage = (e as Record<string, string>).message
@@ -139,7 +209,7 @@ export const registerHandlers = (plugin: PluginAPI) => {
   authGroup.defineRoute({
     method: 'post',
     path: '/logout',
-    handler: async ({ req }) => {
+    handler: async ({ req, res }) => {
       const userId = ((req.user as Record<string, unknown>)?.id as string) || ''
 
       if (!userId) {
@@ -147,6 +217,7 @@ export const registerHandlers = (plugin: PluginAPI) => {
       }
 
       await settings.dataProvider.revokeTokens(userId)
+      clearAuthCookies(res)
 
       return { success: true }
     },
