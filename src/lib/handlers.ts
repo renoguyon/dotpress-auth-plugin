@@ -104,7 +104,7 @@ export const registerHandlers = (plugin: PluginAPI) => {
         setAuthCookies(
           res,
           { accessToken, refreshToken },
-          settings.accessTokenTTL
+          settings.refreshTokenTTLInDays * 24 * 60 * 60
         )
       }
 
@@ -167,7 +167,7 @@ export const registerHandlers = (plugin: PluginAPI) => {
               accessToken: tokens.accessToken,
               refreshToken: tokens.refreshToken,
             },
-            settings.accessTokenTTL
+            settings.refreshTokenTTLInDays * 24 * 60 * 60
           )
         }
 

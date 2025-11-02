@@ -1,6 +1,6 @@
 {
   "name": "@dotpress/auth",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "JWT Authentication plugin for Dotpress library",
   "author": "Renaud Guyon",
   "license": "MIT",
