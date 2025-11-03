@@ -483,4 +483,297 @@ describe('Cookie Mode Authentication', () => {
       expect(refreshCookie).toContain('Domain=.example.com')
     })
   })
+
+  describe('POST /auth/restore', () => {
+    it('should return 401 when cookies are not enabled', async () => {
+      const authPluginNoCookies = configurePlugin({
+        keys: {
+          secretKey: '',
+          publicKey: '',
+        },
+        dataProvider,
+        cookies: {
+          enabled: false,
+        },
+      })
+
+      const app = await createApp({
+        plugins: [authPluginNoCookies],
+      })
+
+      const res = await request(app).post('/auth/restore')
+
+      expect(res.status).toBe(401)
+    })
+
+    it('should return 401 when accessTokenInCookie is not enabled', async () => {
+      const authPluginNoAccessCookie = configurePlugin({
+        keys: {
+          secretKey: '',
+          publicKey: '',
+        },
+        dataProvider,
+        cookies: {
+          enabled: true,
+          accessTokenInCookie: false, // Required for restore
+        },
+      })
+
+      const app = await createApp({
+        plugins: [authPluginNoAccessCookie],
+      })
+
+      const res = await request(app)
+        .post('/auth/restore')
+        .set('Cookie', ['dotpress_refresh_token=ref-token'])
+
+      expect(res.status).toBe(401)
+    })
+
+    it('should return 401 when refresh token is missing', async () => {
+      const authPluginWithAccessCookie = configurePlugin({
+        keys: {
+          secretKey: '',
+          publicKey: '',
+        },
+        dataProvider,
+        cookies: {
+          enabled: true,
+          accessTokenInCookie: true,
+        },
+      })
+
+      const app = await createApp({
+        plugins: [authPluginWithAccessCookie],
+      })
+
+      const res = await request(app)
+        .post('/auth/restore')
+        .set('Cookie', ['dotpress_access_token=acc-token'])
+
+      expect(res.status).toBe(401)
+    })
+
+    it('should return 401 when access token is missing', async () => {
+      const authPluginWithAccessCookie = configurePlugin({
+        keys: {
+          secretKey: '',
+          publicKey: '',
+        },
+        dataProvider,
+        cookies: {
+          enabled: true,
+          accessTokenInCookie: true,
+        },
+      })
+
+      const app = await createApp({
+        plugins: [authPluginWithAccessCookie],
+      })
+
+      const res = await request(app)
+        .post('/auth/restore')
+        .set('Cookie', ['dotpress_refresh_token=ref-token'])
+
+      expect(res.status).toBe(401)
+    })
+
+    it('should return user and tokens when access token is still valid', async () => {
+      vi.spyOn(tokenFns, 'validateAndDecodeAccessToken').mockReturnValue({
+        userId: 'usr-123',
+      })
+
+      vi.mocked(dataProvider.findUserById).mockResolvedValue({
+        id: 'usr-123',
+        username: 'JohnDoe',
+        email: 'john@example.com',
+      })
+
+      const authPluginWithAccessCookie = configurePlugin({
+        keys: {
+          secretKey: '',
+          publicKey: '',
+        },
+        dataProvider,
+        cookies: {
+          enabled: true,
+          accessTokenInCookie: true,
+        },
+      })
+
+      const app = await createApp({
+        plugins: [authPluginWithAccessCookie],
+      })
+
+      const res = await request(app)
+        .post('/auth/restore')
+        .set('Cookie', [
+          'dotpress_access_token=valid-access-token',
+          'dotpress_refresh_token=valid-refresh-token',
+        ])
+
+      expect(res.status).toBe(200)
+      expect(res.body).toMatchObject({
+        userId: 'usr-123',
+        accessToken: 'valid-access-token',
+        refreshToken: 'valid-refresh-token',
+        expiresIn: expect.any(Number),
+        expiresAt: expect.any(String),
+        user: {
+          id: 'usr-123',
+          username: 'JohnDoe',
+          email: 'john@example.com',
+        },
+      })
+    })
+
+    it('should refresh tokens and return new tokens when access token is expired', async () => {
+      // First call: validateAndDecodeAccessToken throws (expired)
+      vi.spyOn(tokenFns, 'validateAndDecodeAccessToken').mockImplementation(
+        () => {
+          throw new Error('Token expired')
+        }
+      )
+
+      // Second call: generateTokensFromRefreshToken returns new tokens
+      vi.spyOn(tokenFns, 'generateTokensFromRefreshToken').mockResolvedValue({
+        userId: 'usr-456',
+        accessToken: 'new-access-token',
+        refreshToken: 'new-refresh-token',
+      })
+
+      vi.mocked(dataProvider.findUserById).mockResolvedValue({
+        id: 'usr-456',
+        username: 'JaneDoe',
+        email: 'jane@example.com',
+      })
+
+      const authPluginWithAccessCookie = configurePlugin({
+        keys: {
+          secretKey: '',
+          publicKey: '',
+        },
+        dataProvider,
+        cookies: {
+          enabled: true,
+          accessTokenInCookie: true,
+        },
+      })
+
+      const app = await createApp({
+        plugins: [authPluginWithAccessCookie],
+      })
+
+      const res = await request(app)
+        .post('/auth/restore')
+        .set('Cookie', [
+          'dotpress_access_token=expired-access-token',
+          'dotpress_refresh_token=valid-refresh-token',
+        ])
+
+      expect(res.status).toBe(200)
+      expect(res.body).toMatchObject({
+        userId: 'usr-456',
+        accessToken: 'new-access-token',
+        refreshToken: 'new-refresh-token',
+        expiresIn: expect.any(Number),
+        expiresAt: expect.any(String),
+        user: {
+          id: 'usr-456',
+          username: 'JaneDoe',
+          email: 'jane@example.com',
+        },
+      })
+
+      // Verify new cookies were set
+      expect(res.headers['set-cookie']).toBeDefined()
+      const cookies = Array.isArray(res.headers['set-cookie'])
+        ? res.headers['set-cookie']
+        : [res.headers['set-cookie'] as string]
+
+      const accessCookie = cookies.find((c) =>
+        c.startsWith('dotpress_access_token=')
+      )
+      const refreshCookie = cookies.find((c) =>
+        c.startsWith('dotpress_refresh_token=')
+      )
+
+      expect(accessCookie).toBeDefined()
+      expect(refreshCookie).toBeDefined()
+    })
+
+    it('should return 401 when refresh token is invalid', async () => {
+      vi.spyOn(tokenFns, 'validateAndDecodeAccessToken').mockImplementation(
+        () => {
+          throw new Error('Token expired')
+        }
+      )
+
+      vi.spyOn(tokenFns, 'generateTokensFromRefreshToken').mockRejectedValue(
+        new Error('Invalid_Refresh_Token')
+      )
+
+      const authPluginWithAccessCookie = configurePlugin({
+        keys: {
+          secretKey: '',
+          publicKey: '',
+        },
+        dataProvider,
+        cookies: {
+          enabled: true,
+          accessTokenInCookie: true,
+        },
+      })
+
+      const app = await createApp({
+        plugins: [authPluginWithAccessCookie],
+      })
+
+      const res = await request(app)
+        .post('/auth/restore')
+        .set('Cookie', [
+          'dotpress_access_token=expired-access-token',
+          'dotpress_refresh_token=invalid-refresh-token',
+        ])
+
+      expect(res.status).toBe(401)
+    })
+
+    it('should return 401 when refresh token is expired', async () => {
+      vi.spyOn(tokenFns, 'validateAndDecodeAccessToken').mockImplementation(
+        () => {
+          throw new Error('Token expired')
+        }
+      )
+
+      vi.spyOn(tokenFns, 'generateTokensFromRefreshToken').mockRejectedValue(
+        new Error('Expired_Refresh_Token')
+      )
+
+      const authPluginWithAccessCookie = configurePlugin({
+        keys: {
+          secretKey: '',
+          publicKey: '',
+        },
+        dataProvider,
+        cookies: {
+          enabled: true,
+          accessTokenInCookie: true,
+        },
+      })
+
+      const app = await createApp({
+        plugins: [authPluginWithAccessCookie],
+      })
+
+      const res = await request(app)
+        .post('/auth/restore')
+        .set('Cookie', [
+          'dotpress_access_token=expired-access-token',
+          'dotpress_refresh_token=expired-refresh-token',
+        ])
+
+      expect(res.status).toBe(401)
+    })
+  })
 })

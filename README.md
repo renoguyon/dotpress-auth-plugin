@@ -45,6 +45,7 @@ The plugin will check and parse bearer token from Authorization header and will 
 
 - `POST /auth/login`
 - `POST /auth/refresh`
+- `POST /auth/restore`
 - `GET /auth/me`
 - `POST /auth/logout`
 
@@ -227,6 +228,81 @@ Refresh tokens using previous token pair. The plugin automatically detects the a
 - `NO_TOKENS_PROVIDED`: No tokens found in cookies or body
 - `INVALID_REFRESH_TOKEN`: Refresh token is invalid or already used
 - `EXPIRED_REFRESH_TOKEN`: Refresh token has expired
+
+### `POST /auth/restore`
+
+Restore a user session from cookies. This endpoint validates the access token from cookies and automatically refreshes it if expired.
+
+**Use Case:**
+This route is designed for web applications to restore user sessions after page reload or when returning after inactivity. Instead of making multiple API calls (`/auth/me` → 401 → `/auth/refresh` → `/auth/me`), you can call `/auth/restore` once to validate or refresh the session in a single request.
+
+**Requirements:**
+- Cookie mode must be enabled (`cookies.enabled: true`)
+- Access token must be stored in cookies (`cookies.accessTokenInCookie: true`)
+- Both `accessToken` and `refreshToken` must be present in cookies
+
+**Request:**
+No body required. Tokens are automatically extracted from cookies.
+
+**Response:**
+```json
+{
+  "userId": "usr-123",
+  "accessToken": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refreshToken": "3f7b2a8c1e...",
+  "expiresIn": 3600,
+  "expiresAt": "2025-11-02T16:30:00.000Z",
+  "user": {
+    "id": "usr-123",
+    "username": "JohnDoe",
+    "email": "john@example.com"
+  }
+}
+```
+
+**Behavior:**
+1. If `accessToken` is valid: Returns existing tokens with user data
+2. If `accessToken` is expired but `refreshToken` is valid: Generates new token pair, updates cookies, and returns new tokens with user data
+3. If both tokens are invalid: Returns 401
+
+**Error Codes:**
+- `COOKIES_NOT_ENABLED`: Cookie mode is not enabled in plugin configuration
+- `ACCESS_TOKEN_NOT_IN_COOKIE`: `accessTokenInCookie` is not enabled
+- `NO_REFRESH_TOKEN`: Refresh token cookie is missing
+- `NO_ACCESS_TOKEN`: Access token cookie is missing
+- `INVALID_REFRESH_TOKEN`: Refresh token is invalid or already used
+- `EXPIRED_REFRESH_TOKEN`: Refresh token has expired
+- `USER_NOT_FOUND`: User ID from token not found in database
+
+**Example Usage:**
+
+```ts
+// React SPA: Restore session on app initialization
+useEffect(() => {
+  const restoreSession = async () => {
+    try {
+      const response = await fetch('/auth/restore', {
+        method: 'POST',
+        credentials: 'include', // Important: include cookies
+      })
+
+      if (response.ok) {
+        const { user, accessToken, expiresAt } = await response.json()
+        dispatch(setUser(user))
+        dispatch(setAccessToken(accessToken))
+        dispatch(setExpiresAt(expiresAt))
+      } else {
+        // Session invalid, redirect to login
+        navigate('/login')
+      }
+    } catch (error) {
+      console.error('Failed to restore session:', error)
+    }
+  }
+
+  restoreSession()
+}, [])
+```
 
 ### `GET /auth/me`
 

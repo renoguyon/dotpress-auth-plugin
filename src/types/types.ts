@@ -78,6 +78,15 @@ export type TokenResponse = {
   expiresAt: string
 }
 
+export type RestoreResponse = {
+  userId: string
+  accessToken: string
+  refreshToken: string
+  expiresIn: number
+  expiresAt: string
+  user: unknown
+}
+
 export type CreateTokenPayload = {
   sub: string
   username: string

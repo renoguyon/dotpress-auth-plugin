@@ -6,12 +6,14 @@ import { getRequestIp } from './ip.js'
 import {
   generateTokensForUser,
   generateTokensFromRefreshToken,
+  validateAndDecodeAccessToken,
 } from './tokens.js'
 import {
   setAuthCookies,
   clearAuthCookies,
   extractTokensFromRequest,
   calculateExpiration,
+  getCookieSettings,
 } from './cookies.js'
 
 export const registerHandlers = (plugin: PluginAPI) => {
@@ -203,6 +205,110 @@ export const registerHandlers = (plugin: PluginAPI) => {
       }
 
       return req.user
+    },
+  })
+
+  authGroup.defineRoute({
+    method: 'post',
+    path: '/restore',
+    schema: (z) => ({
+      response: z.object({
+        userId: z.string(),
+        accessToken: z.string(),
+        refreshToken: z.string(),
+        expiresIn: z.number(),
+        expiresAt: z.string(),
+        user: z.unknown(),
+      }),
+    }),
+    handler: async ({ req, res }) => {
+      const cookieSettings = getCookieSettings()
+
+      // Only support cookie mode for restore
+      if (!cookieSettings.enabled) {
+        return unauthorizedError('COOKIES_NOT_ENABLED')
+      }
+
+      // This endpoint requires accessTokenInCookie to be enabled
+      if (!cookieSettings.accessTokenInCookie) {
+        return unauthorizedError('ACCESS_TOKEN_NOT_IN_COOKIE')
+      }
+
+      const refreshToken = req.cookies?.[cookieSettings.refreshTokenName]
+      const accessToken = req.cookies?.[cookieSettings.accessTokenName]
+
+      if (!refreshToken) {
+        return unauthorizedError('NO_REFRESH_TOKEN')
+      }
+
+      if (!accessToken) {
+        return unauthorizedError('NO_ACCESS_TOKEN')
+      }
+
+      // Try to validate access token first
+      try {
+        const { userId } = validateAndDecodeAccessToken(accessToken)
+        const user = await settings.dataProvider.findUserById(userId)
+
+        if (user) {
+          const expiration = calculateExpiration(settings.accessTokenTTL)
+
+          return {
+            userId,
+            accessToken,
+            refreshToken,
+            ...expiration,
+            user,
+          }
+        }
+      } catch {
+        // Access token is invalid or expired, continue to refresh logic
+      }
+
+      // Access token is expired, try to refresh using refresh token
+      try {
+        const tokens = await generateTokensFromRefreshToken({
+          accessToken,
+          refreshToken,
+        })
+
+        // Set new cookies
+        setAuthCookies(
+          res,
+          {
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken,
+          },
+          settings.refreshTokenTTLInDays * 24 * 60 * 60
+        )
+
+        const user = await settings.dataProvider.findUserById(tokens.userId)
+
+        if (!user) {
+          return unauthorizedError('USER_NOT_FOUND')
+        }
+
+        const expiration = calculateExpiration(settings.accessTokenTTL)
+
+        return {
+          userId: tokens.userId,
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          ...expiration,
+          user,
+        }
+      } catch (e) {
+        const errorMessage = (e as Record<string, string>).message
+
+        if (errorMessage === 'Invalid_Refresh_Token') {
+          return unauthorizedError('INVALID_REFRESH_TOKEN')
+        }
+        if (errorMessage === 'Expired_Refresh_Token') {
+          return unauthorizedError('EXPIRED_REFRESH_TOKEN')
+        }
+
+        return internalError('Cannot restore session.')
+      }
     },
   })
 
